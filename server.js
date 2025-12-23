@@ -13,7 +13,7 @@ const io = new Server(server, {
     }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3904;
 
 // Helper to get sorted participants
 function getSortedParticipants(user1, user2) {
