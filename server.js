@@ -59,7 +59,7 @@ io.on('connection', (socket) => {
 
             // Fetch initial messages (last 50)
             const [messages] = await db.execute(
-                'SELECT * FROM messages WHERE room_id = ? ORDER BY created_at DESC LIMIT 50',
+                'SELECT * FROM ripplevids_messages WHERE room_id = ? ORDER BY created_at DESC LIMIT 50',
                 [room.id]
             );
 
@@ -97,7 +97,7 @@ io.on('connection', (socket) => {
 
             // Save message
             await db.execute(
-                'INSERT INTO messages (id, room_id, sender_id, body, created_at) VALUES (?, ?, ?, ?, ?)',
+                'INSERT INTO ripplevids_messages (id, room_id, sender_id, body, created_at) VALUES (?, ?, ?, ?, ?)',
                 [messageId, roomId, senderId, body, createdAt]
             );
 
@@ -128,7 +128,7 @@ io.on('connection', (socket) => {
     socket.on('fetch_messages', async ({ roomId, limit = 20, offset = 0 }) => {
         try {
             const [messages] = await db.execute(
-                'SELECT * FROM messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+                'SELECT * FROM ripplevids_messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
                 [roomId, parseInt(limit), parseInt(offset)]
             );
 

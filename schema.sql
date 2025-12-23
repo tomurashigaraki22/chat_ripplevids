@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS rooms (
     INDEX idx_last_message_at (last_message_at)
 );
 
-CREATE TABLE IF NOT EXISTS messages (
+CREATE TABLE IF NOT EXISTS ripplevids_messages (
     id CHAR(36) PRIMARY KEY,
     room_id CHAR(36) NOT NULL,
     sender_id CHAR(36) NOT NULL,
