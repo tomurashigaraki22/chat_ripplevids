@@ -21,12 +21,24 @@ const socket = io("http://localhost:3000");
 
 socket.on("connect", () => {
   console.log("Connected to chat server:", socket.id);
+  // Register user for notifications
+  socket.emit("register_user", "uuid-string-of-current-user");
 });
 ```
 
 ## WebSocket Events
 
-### 1. Join a Chat
+### 1. Register User (Required for Notifications)
+
+Joins the user to a personal channel to receive real-time updates like `chat_list_update`.
+
+**Emit:** `register_user`
+
+**Payload:** `uuid-string-of-current-user`
+
+---
+
+### 2. Join a Chat
 
 Initiates a chat session between two users. The server automatically determines the unique room for these two users.
 
@@ -66,7 +78,7 @@ Initiates a chat session between two users. The server automatically determines 
 
 ---
 
-### 2. Send a Message
+### 3. Send a Message
 
 Sends a message to the current room.
 
@@ -97,9 +109,22 @@ Sends a message to the current room.
     });
     ```
 
+*   **Update (`chat_list_update`):** Sent to the **receiver** to update their chat list preview in real-time.
+    ```javascript
+    socket.on("chat_list_update", (data) => {
+       console.log("Chat List Update:", data);
+       // { 
+       //   room_id: "uuid...", 
+       //   last_message: "Hello world!", 
+       //   sender_id: "uuid...", 
+       //   updated_at: "timestamp..." 
+       // }
+    });
+    ```
+
 ---
 
-### 3. Fetch Older Messages (Pagination)
+### 4. Fetch Older Messages (Pagination)
 
 Load previous messages when the user scrolls up.
 

@@ -23,6 +23,14 @@ function getSortedParticipants(user1, user2) {
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
+    // Register User for Notifications
+    socket.on('register_user', (userId) => {
+        if (userId) {
+            socket.join(userId);
+            console.log(`User registered: ${userId}`);
+        }
+    });
+
     // Join a Chat Room
     socket.on('join_chat', async ({ userId, targetUserId }) => {
         try {
@@ -106,6 +114,18 @@ io.on('connection', (socket) => {
                 'UPDATE rooms SET last_message_at = ? WHERE id = ?',
                 [createdAt, roomId]
             );
+
+            // Determine receiver
+            const roomData = roomRows[0];
+            const receiverId = roomData.participant1 === senderId ? roomData.participant2 : roomData.participant1;
+
+            // Emit chat list update to receiver
+            io.to(receiverId).emit("chat_list_update", {
+                room_id: roomId,
+                last_message: body,
+                sender_id: senderId,
+                updated_at: createdAt
+            });
 
             const message = {
                 id: messageId,
