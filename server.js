@@ -20,6 +20,40 @@ function getSortedParticipants(user1, user2) {
     return [user1, user2].sort();
 }
 
+app.get('/api/conversations/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const [rows] = await db.execute(`
+            SELECT 
+                r.*,
+                CASE 
+                    WHEN r.participant1 = ? THEN r.participant2
+                    ELSE r.participant1
+                END AS other_user_id
+            FROM rooms r
+            WHERE (r.participant1 = ? OR r.participant2 = ?)
+            AND EXISTS (
+                SELECT 1 FROM follows f
+                WHERE 
+                    (f.follower_id = ? AND f.following_id =
+                        CASE WHEN r.participant1 = ? THEN r.participant2 ELSE r.participant1 END)
+                OR
+                    (f.following_id = ? AND f.follower_id =
+                        CASE WHEN r.participant1 = ? THEN r.participant2 ELSE r.participant1 END)
+            )
+            ORDER BY r.last_message_at DESC
+        `, [userId, userId, userId, userId, userId, userId, userId]);
+
+        res.json(rows);
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Failed to fetch conversations' });
+    }
+});
+
+
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
