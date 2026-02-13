@@ -53,6 +53,62 @@ app.get('/api/conversations/:userId', async (req, res) => {
     }
 });
 
+// Add this route to your existing Express app
+app.post("/api/messages/reply", async (req, res) => {
+    try {
+        const { roomId, senderId, message } = req.body;
+
+        if (!roomId || !senderId || !message) {
+            return res.status(400).json({ error: "Missing fields" });
+        }
+
+        const messageId = uuidv4();
+        const createdAt = new Date();
+
+        // Save message in database
+        await db.execute(
+            'INSERT INTO ripplevids_messages (id, room_id, sender_id, body, created_at) VALUES (?, ?, ?, ?, ?)',
+            [messageId, roomId, senderId, message, createdAt]
+        );
+
+        // Update room last_message_at
+        await db.execute(
+            'UPDATE rooms SET last_message_at = ? WHERE id = ?',
+            [createdAt, roomId]
+        );
+
+        // Fetch room info to determine receiver
+        const [roomRows] = await db.execute(
+            'SELECT * FROM rooms WHERE id = ?',
+            [roomId]
+        );
+
+        if (!roomRows.length) {
+            return res.status(404).json({ error: "Room not found" });
+        }
+
+        const room = roomRows[0];
+        const receiverId = room.participant1 === senderId ? room.participant2 : room.participant1;
+
+        // Emit to socket.io so both users see it
+        const messageObj = { id: messageId, room_id: roomId, sender_id: senderId, body: message, created_at: createdAt };
+        io.to(roomId).emit("new_message", messageObj);
+
+        io.to(receiverId).emit("chat_list_update", {
+            room_id: roomId,
+            last_message: message,
+            sender_id: senderId,
+            updated_at: createdAt
+        });
+
+        res.json({ success: true, message: messageObj });
+
+    } catch (err) {
+        console.error("Reply message error:", err);
+        res.status(500).json({ error: "Failed to add reply to conversation" });
+    }
+});
+
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
