@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
 const db = require('./db');
 
 const app = express();
@@ -174,65 +175,69 @@ io.on('connection', (socket) => {
 
     // Send Message
     socket.on('send_message', async ({ roomId, senderId, body }) => {
-        try {
-            // Validate input
-            if (!roomId || !senderId || !body) {
-                return socket.emit('error', { message: 'Missing message details' });
-            }
-
-            // Validate sender belongs to room
-            const [roomRows] = await db.execute(
-                'SELECT * FROM rooms WHERE id = ? AND (participant1 = ? OR participant2 = ?)',
-                [roomId, senderId, senderId]
-            );
-
-            if (roomRows.length === 0) {
-                return socket.emit('error', { message: 'Invalid room or sender not in room' });
-            }
-
-            const messageId = uuidv4();
-            const createdAt = new Date();
-
-            // Save message
-            await db.execute(
-                'INSERT INTO ripplevids_messages (id, room_id, sender_id, body, created_at) VALUES (?, ?, ?, ?, ?)',
-                [messageId, roomId, senderId, body, createdAt]
-            );
-
-            // Update room last_message_at
-            await db.execute(
-                'UPDATE rooms SET last_message_at = ? WHERE id = ?',
-                [createdAt, roomId]
-            );
-
-            // Determine receiver
-            const roomData = roomRows[0];
-            const receiverId = roomData.participant1 === senderId ? roomData.participant2 : roomData.participant1;
-
-            // Emit chat list update to receiver
-            io.to(receiverId).emit("chat_list_update", {
-                room_id: roomId,
-                last_message: body,
-                sender_id: senderId,
-                updated_at: createdAt
-            });
-
-            const message = {
-                id: messageId,
-                room_id: roomId,
-                sender_id: senderId,
-                body: body,
-                created_at: createdAt
-            };
-
-            // Emit to room (including sender)
-            io.to(roomId).emit('new_message', message);
-
-        } catch (error) {
-            console.error('Error sending message:', error);
-            socket.emit('error', { message: 'Failed to send message' });
+    try {
+        if (!roomId || !senderId || !body) {
+            return socket.emit('error', { message: 'Missing message details' });
         }
-    });
+
+        // Validate sender belongs to room
+        const [roomRows] = await db.execute(
+            'SELECT * FROM rooms WHERE id = ? AND (participant1 = ? OR participant2 = ?)',
+            [roomId, senderId, senderId]
+        );
+
+        if (roomRows.length === 0) {
+            return socket.emit('error', { message: 'Invalid room or sender not in room' });
+        }
+
+        const messageId = uuidv4();
+        const createdAt = new Date();
+
+        // Save message
+        await db.execute(
+            'INSERT INTO ripplevids_messages (id, room_id, sender_id, body, created_at) VALUES (?, ?, ?, ?, ?)',
+            [messageId, roomId, senderId, body, createdAt]
+        );
+
+        // Update room last_message_at
+        await db.execute(
+            'UPDATE rooms SET last_message_at = ? WHERE id = ?',
+            [createdAt, roomId]
+        );
+
+        const roomData = roomRows[0];
+        const receiverId = roomData.participant1 === senderId ? roomData.participant2 : roomData.participant1;
+
+        // Emit chat to room and chat list update
+        const messageObj = { id: messageId, room_id: roomId, sender_id: senderId, body, created_at: createdAt };
+        io.to(roomId).emit('new_message', messageObj);
+        io.to(receiverId).emit("chat_list_update", {
+            room_id: roomId,
+            last_message: body,
+            sender_id: senderId,
+            updated_at: createdAt
+        });
+
+        // 🔔 Fire-and-forget push notification to Flask
+        (async () => {
+            try {
+                await axios.post('http://YOUR_FLASK_SERVER/notifications/chat-reply', {
+                    user_id: receiverId,
+                    title: 'New message',
+                    body,
+                    conversation_id: roomId,
+                    sender_id: senderId
+                }, { timeout: 3000 }); // optional timeout so Node.js isn’t blocked
+            } catch (err) {
+                console.error('Failed to send replyable notification:', err.message);
+            }
+        })();
+
+    } catch (error) {
+        console.error('Error sending message:', error);
+        socket.emit('error', { message: 'Failed to send message' });
+    }
+});
 
     // Fetch Older Messages (Pagination)
     socket.on('fetch_messages', async ({ roomId, limit = 20, offset = 0 }) => {
