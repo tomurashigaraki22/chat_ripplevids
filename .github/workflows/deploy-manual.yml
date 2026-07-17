@@ -1,0 +1,68 @@
+name: Deploy RippleVids Chat (Manual)
+
+# Manual, guardrailed deploys. production -> ripplevids_chat (restarts BOTH
+# chat_ripplevids.service and ripplevids-chat-live.service).
+# Staging is NOT yet provisioned — see docs/STAGING_SETUP.md in rippleverse_website.
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Deploy from Branch"
+        required: true
+        type: choice
+        default: "production"
+        options:
+          - production
+          - staging
+          - main
+      target:
+        description: "Deploy to"
+        required: true
+        type: choice
+        default: "production"
+        options:
+          - production
+          - staging
+
+concurrency:
+  group: deploy-chat-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: ${{ inputs.target }}
+      BRANCH: ${{ inputs.branch }}
+    steps:
+      - name: Staging not provisioned
+        if: ${{ inputs.target == 'staging' }}
+        run: |
+          echo "::error::No staging instance for chat_ripplevids yet. See docs/STAGING_SETUP.md (rippleverse_website) to provision it."
+          exit 1
+
+      - name: Guardrail — production only deploys the production branch
+        if: ${{ inputs.target == 'production' && inputs.branch != 'production' }}
+        run: |
+          echo "::error::Refusing to deploy branch '$BRANCH' to production. Only the 'production' branch may deploy there."
+          exit 1
+
+      - name: Verify branch exists on origin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/branches/$BRANCH" --silent \
+            || { echo "::error::Branch '$BRANCH' not found on origin"; exit 1; }
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: |
+          echo "Deploying branch '$BRANCH' to production via deploy-chat-prod.sh"
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "/opt/rippleverse/deploy/bin/deploy-chat-prod.sh" "$BRANCH"
